@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="kanban-wrapper">
+  <div class="board-header text-center">
+    <h2 class="fw-bold text-primary">{{ board.name }}</h2>
+    <p class="text-muted small">Created on {{ board.date_created.strftime('%d %b %Y') }}</p>
+
+    <!-- Add List -->
+    <div class="actions mt-3">
+      <form method="POST" action="{{ url_for('add_list', board_id=board.id) }}" class="d-inline-flex justify-content-center">
+        <input type="text" name="list_name" class="form-control me-2 shadow-sm" placeholder="New List Name" required>
+        <button type="submit" class="btn btn-gradient">Add List</button>
+      </form>
+      <a href="{{ url_for('dashboard') }}" class="btn btn-outline-dark ms-3">← Back to Dashboard</a>
+    </div>
+
+    <!-- Add Collaborator -->
+    <form method="POST" action="{{ url_for('add_collaborator', board_id=board.id) }}" class="mt-3 d-flex justify-content-center">
+      <input type="text" name="username" class="form-control w-25 me-2" placeholder="Add collaborator username" required>
+      <button type="submit" class="btn btn-success">Add Collaborator</button>
+    </form>
+
+    <!-- Collaborators Display -->
+    <div class="collaborators mt-3">
+      <p class="text-muted">
+        <strong>Collaborators:</strong>
+        {% if board.collaborators %}
+          {% for user in board.collaborators %}
+            <span class="badge bg-primary text-light me-1">{{ user.username }}</span>
+          {% endfor %}
+        {% else %}
+          <span class="text-muted">No collaborators added yet.</span>
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  <!-- Kanban Board -->
+  <div id="kanban-board" class="kanban-board mt-5 d-flex flex-wrap gap-3 justify-content-center">
+    {% for list in lists %}
+    <div class="kanban-column shadow-sm p-3 rounded" data-list-id="{{ list.id }}">
+      <div class="kanban-column-header d-flex justify-content-between align-items-center mb-2">
+        <h5 class="fw-bold text-primary">{{ list.name }}</h5>
+        <div class="d-flex gap-1">
+          <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#editListModal{{ list.id }}">
+            <i class="fa fa-edit"></i>
+          </button>
+          <form method="POST" action="{{ url_for('delete_list', list_id=list.id) }}" onsubmit="return confirm('Delete this list and all its cards?');">
+            <button type="submit" class="btn btn-sm btn-danger"><i class="fa fa-trash"></i></button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Cards -->
+      <div class="kanban-cards bg-light p-2 rounded"
+           data-list-id="{{ list.id }}"
+           ondrop="dropCard(event)"
+           ondragover="allowDrop(event)">
+        {% for card in list.cards %}
+        <div class="kanban-card shadow-sm p-2 mb-2 bg-white rounded"
+             id="card-{{ card.id }}"
+             draggable="true"
+             ondragstart="dragCard(event)"
+             data-card-id="{{ card.id }}">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <p class="fw-semibold mb-1 text-dark">{{ card.title }}</p>
+              {% if card.description %}
+              <p class="small text-muted mb-1">{{ card.description }}</p>
+              {% endif %}
+              <small class="text-muted">{{ card.date_created.strftime('%d %b %Y') }}</small>
+            </div>
+            <div class="ms-2">
+              <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editCardModal{{ card.id }}">
+                <i class="fa fa-edit"></i>
+              </button>
+              <form method="POST" action="{{ url_for('delete_card', card_id=card.id) }}" style="display:inline;"
+                    onsubmit="return confirm('Delete this card?');">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                  <i class="fa fa-trash"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Edit Card Modal -->
+        <div class="modal fade" id="editCardModal{{ card.id }}" tabindex="-1" aria-labelledby="editCardLabel{{ card.id }}" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content glass-modal p-4">
+              <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold text-primary" id="editCardLabel{{ card.id }}">Edit Card</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <form method="POST" action="{{ url_for('update_card', card_id=card.id) }}">
+                <div class="modal-body">
+                  <label class="form-label">Title</label>
+                  <input type="text" name="card_title" value="{{ card.title }}" class="form-control mb-3" required>
+                  <label class="form-label">Description</label>
+                  <textarea name="card_description" class="form-control" rows="3" placeholder="Enter card details">{{ card.description }}</textarea>
+                </div>
+                <div class="modal-footer border-0">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                  <button type="submit" class="btn btn-warning">Update</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Add Card -->
+      <form method="POST" action="{{ url_for('add_card', list_id=list.id) }}" class="add-card-form mt-3">
+        <input type="text" name="card_title" class="form-control mb-2" placeholder="Card title" required>
+        <textarea name="card_description" class="form-control mb-2" placeholder="Card description (optional)"></textarea>
+        <button type="submit" class="btn btn-sm btn-gradient w-100">Add Card</button>
+      </form>
+    </div>
+
+    <!-- Edit List Modal -->
+    <div class="modal fade" id="editListModal{{ list.id }}" tabindex="-1" aria-labelledby="editListLabel{{ list.id }}" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-modal p-4">
+          <div class="modal-header border-0">
+            <h5 class="modal-title fw-bold text-primary" id="editListLabel{{ list.id }}">Edit List</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form method="POST" action="{{ url_for('update_list', list_id=list.id) }}">
+            <div class="modal-body">
+              <input type="text" name="list_name" value="{{ list.name }}" class="form-control" required>
+            </div>
+            <div class="modal-footer border-0">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-warning">Update</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ✅ SOCKET.IO + REAL-TIME INTERACTION -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const socket = io();
+const boardId = {{ board.id }};
+
+// 🟢 Join board room
+socket.emit("join_board", { board_id: boardId });
+
+// ✅ Real-time updates
+socket.on("refresh_board", data => {
+  if (data.board_id === boardId) {
+    location.reload();
+  }
+});
+
+socket.on("card_moved", data => {
+  if (data.board_id === boardId) {
+    location.reload();
+  }
+});
+
+let draggedCard = null;
+function dragCard(event) {
+  draggedCard = event.target;
+  event.dataTransfer.setData("text/plain", event.target.id);
+  event.target.style.opacity = "0.5";
+}
+
+function allowDrop(event) {
+  event.preventDefault();
+}
+
+function dropCard(event) {
+  event.preventDefault();
+  const targetList = event.currentTarget;
+  const cardId = event.dataTransfer.getData("text/plain");
+  const card = document.getElementById(cardId);
+  const newListId = targetList.getAttribute("data-list-id");
+
+  if (card && newListId) {
+    targetList.appendChild(card);
+    card.style.opacity = "1";
+
+    const cards = Array.from(targetList.querySelectorAll(".kanban-card"));
+    const newPosition = cards.indexOf(card);
+
+    fetch(`/move_card/${card.dataset.cardId}/${newListId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_position: newPosition })
+    });
+  }
+}
+
+document.addEventListener("dragend", () => {
+  if (draggedCard) draggedCard.style.opacity = "1";
+});
+
+// 🟠 Leave board room on exit
+window.addEventListener("beforeunload", () => {
+  socket.emit("leave_board", { board_id: boardId });
+});
+</script>
+
+{% endblock %}

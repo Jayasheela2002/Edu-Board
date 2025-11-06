@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Dashboard Header -->
+<div class="dashboard-header text-center mt-4">
+  <h2 class="page-title fw-bold text-primary">Welcome, {{ current_user.username }} 👋</h2>
+  <p class="text-muted">Organize your projects visually using boards and collaborate with others.</p>
+
+  <!-- Create Board Button -->
+  <button class="btn btn-gradient mt-3 px-4 py-2" data-bs-toggle="modal" data-bs-target="#createBoardModal">
+    + Create New Board
+  </button>
+</div>
+
+<!-- Motivational Glass Card (kept from earlier) -->
+<div id="motivation-banner" class="motivation-banner mt-4 mx-auto" style="max-width:650px;">
+  <div class="quote-text"></div>
+</div>
+
+<!-- Boards Section -->
+<div class="boards-grid container mt-5 d-flex flex-wrap justify-content-center gap-4">
+  {% for board in boards %}
+  <div class="board-card card shadow-sm p-4 text-center border-0" style="width: 280px;">
+    <h4 class="board-title text-primary fw-bold">{{ board.name }}</h4>
+
+    <!-- Collaborators Section -->
+    <div class="mt-3">
+      <strong class="small text-muted d-block">Collaborators:</strong>
+      {% if board.collaborators %}
+        <div class="d-flex flex-wrap justify-content-center mt-1">
+          {% for user in board.collaborators %}
+            <span class="badge bg-info text-dark m-1 px-2 py-1">{{ user.username }}</span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-muted small mt-1">No collaborators yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- Owner Info -->
+    <p class="text-muted small mt-2">
+      <i class="fa fa-user"></i> Owner: <strong>{{ board.owner.username }}</strong>
+    </p>
+
+    <!-- Action Buttons -->
+    <div class="board-actions d-flex justify-content-center gap-2 mt-3">
+      <a href="{{ url_for('view_board', board_id=board.id) }}" class="btn btn-sm btn-outline-primary" title="View Board">
+        <i class="fa fa-eye"></i>
+      </a>
+      <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#editBoardModal{{ board.id }}" title="Edit Board">
+        <i class="fa fa-edit"></i>
+      </button>
+      <form method="POST" action="{{ url_for('delete_board', board_id=board.id) }}" style="display:inline;"
+            onsubmit="return confirm('Are you sure you want to delete this board?');">
+        <button type="submit" class="btn btn-sm btn-danger" title="Delete Board">
+          <i class="fa fa-trash"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Board Modal -->
+  <div class="modal fade" id="editBoardModal{{ board.id }}" tabindex="-1" aria-labelledby="editBoardLabel{{ board.id }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-modal p-4">
+        <div class="modal-header border-0">
+          <h5 class="modal-title fw-bold text-primary" id="editBoardLabel{{ board.id }}">Edit Board</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form method="POST" action="{{ url_for('update_board', board_id=board.id) }}">
+          <div class="modal-body">
+            <input type="text" name="board_name" value="{{ board.name }}" class="form-control"
+                   placeholder="Enter new board name" required>
+          </div>
+          <div class="modal-footer border-0">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-warning">Update</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {% else %}
+  <div class="empty text-center text-muted mt-5">
+    <p>No boards yet. Click “Create New Board” to start your first one!</p>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Create Board Modal -->
+<div class="modal fade" id="createBoardModal" tabindex="-1" aria-labelledby="createBoardLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content glass-modal p-4">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold text-primary" id="createBoardLabel">Create New Board</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('create_board') }}">
+        <div class="modal-body">
+          <input type="text" name="board_name" class="form-control" placeholder="Enter board name" required>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-gradient">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Floating Chat -->
+<script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+
+<div id="chat-widget">
+  <div id="chat-toggle">💬 <span id="chat-notification">0</span></div>
+
+  <div id="chat-box">
+    <div id="chat-header">
+      <div class="chat-title">Team Chat 💬</div>
+      <div class="chat-actions">
+        <button id="minimize-chat">—</button>
+        <button id="close-chat">&times;</button>
+      </div>
+    </div>
+
+    <div id="chat-body">
+      <div id="chat-messages" aria-live="polite" aria-atomic="false"></div>
+    </div>
+
+    <div id="chat-compose">
+      <button id="emojiBtn" class="icon" title="Emoji">😊</button>
+      <input id="message" type="text" placeholder="Type a message..." autocomplete="off" />
+      <!-- Hidden file input used for uploads -->
+      <input id="fileInput" type="file" accept="image/*,application/pdf,.doc,.docx" style="display:none" />
+      <button id="fileBtn" class="icon" title="Attach file">📎</button>
+      <button id="sendBtn" class="send" title="Send"><i class="fa fa-paper-plane"></i></button>
+    </div>
+
+    <div id="emoji-panel" aria-hidden="true"></div>
+  </div>
+</div>
+
+<script>
+/* ---------- MOTIVATIONAL BANNER ---------- */
+const quotes = [
+  "✨ Believe in yourself — you’re stronger than you think.",
+  "🚀 Push your limits, greatness awaits!",
+  "🌟 Success starts with the courage to try.",
+  "💪 Every small step counts towards your dream.",
+  "🔥 Stay hungry, stay humble, stay focused.",
+  "🎯 Don’t stop until you’re proud.",
+  "💫 The best view comes after the hardest climb."
+];
+const bgImages = [
+  "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=60",
+  "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1200&q=60",
+  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=60"
+];
+const banner = document.getElementById("motivation-banner");
+const quoteText = document.querySelector(".quote-text");
+let mqIndex = 0;
+function rotateQuotes() {
+  if (!banner || !quoteText) return;
+  const randomBg = bgImages[Math.floor(Math.random() * bgImages.length)];
+  banner.style.backgroundImage = `url(${randomBg})`;
+  quoteText.textContent = quotes[mqIndex];
+  mqIndex = (mqIndex + 1) % quotes.length;
+}
+rotateQuotes();
+setInterval(rotateQuotes, 5000);
+
+/* ---------- CHAT (Socket + Upload) ---------- */
+const socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
+const username = "{{ current_user.username }}";
+const chatBox = document.getElementById('chat-box');
+const chatToggle = document.getElementById('chat-toggle');
+const chatMessages = document.getElementById('chat-messages');
+const sendBtn = document.getElementById('sendBtn');
+const messageInput = document.getElementById('message');
+const notif = document.getElementById('chat-notification');
+const closeChat = document.getElementById('close-chat');
+const minimizeChat = document.getElementById('minimize-chat');
+const emojiPanel = document.getElementById('emoji-panel');
+const emojiBtn = document.getElementById('emojiBtn');
+const fileBtn = document.getElementById('fileBtn');
+const fileInput = document.getElementById('fileInput');
+
+notif.style.display = 'none';
+
+/* ---------- EMOJIS (10) ---------- */
+const EMOS = ["😀","😁","😂","😊","😍","😘","😎","🤩","😅","👍"];
+function buildEmojiPanel() {
+  emojiPanel.innerHTML = '';
+  emojiPanel.className = 'emoji-panel';
+  const grid = document.createElement('div');
+  grid.className = 'emoji-grid';
+  EMOS.forEach(e => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'emoji-cell';
+    btn.textContent = e;
+    btn.title = e;
+    btn.addEventListener('click', () => {
+      messageInput.value += e;
+      emojiPanel.style.display = 'none';
+      messageInput.focus();
+    });
+    grid.appendChild(btn);
+  });
+  emojiPanel.appendChild(grid);
+}
+buildEmojiPanel();
+
+emojiBtn.onclick = (e) => {
+  e.stopPropagation();
+  emojiPanel.style.display = emojiPanel.style.display === 'block' ? 'none' : 'block';
+  // position handled by CSS, panel closes on outside click
+};
+document.addEventListener('click', (e) => {
+  if (!emojiPanel.contains(e.target) && e.target !== emojiBtn) emojiPanel.style.display = 'none';
+});
+
+/* ---------- Message rendering helper ---------- */
+function renderMessage(data) {
+  // data: { username, message?, file?, filename? }
+  const row = document.createElement('div');
+  row.className = 'chat-msg ' + (data.username === username ? 'me' : 'them');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+
+  // header
+  const from = document.createElement('div');
+  from.className = 'from';
+  from.innerHTML = `<strong>${escapeHtml(data.username)}</strong>`;
+
+  // content
+  const content = document.createElement('div');
+  content.className = 'txt';
+
+  if (data.file) {
+    const url = data.file;
+    const fn = data.filename || url.split('/').pop();
+    const ext = (fn.split('.').pop() || '').toLowerCase();
+    if (url.startsWith('data:image/') || ['png','jpg','jpeg','gif','webp'].includes(ext)) {
+      // image preview
+      const img = document.createElement('img');
+      img.className = 'msg-img';
+      img.src = url;
+      img.alt = fn;
+      img.loading = 'lazy';
+      content.appendChild(img);
+      // optionally show filename under image
+      const caption = document.createElement('div');
+      caption.className = 'file-caption';
+      caption.textContent = fn;
+      caption.style.marginTop = '6px';
+      caption.style.fontSize = '12px';
+      caption.style.opacity = '0.9';
+      content.appendChild(caption);
+    } else {
+      // non-image file: provide link
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.className = 'file-link';
+      a.textContent = '📎 ' + fn;
+      content.appendChild(a);
+    }
+  }
+
+  if (data.message) {
+    // message text (append as text)
+    const p = document.createElement('div');
+    p.textContent = data.message;
+    p.className = 'txt-text';
+    // if there are also files, put text below or above depending on preference
+    if (content.hasChildNodes()) {
+      // put text below
+      content.appendChild(p);
+    } else {
+      content.appendChild(p);
+    }
+  }
+
+  bubble.appendChild(from);
+  bubble.appendChild(content);
+  row.appendChild(bubble);
+  chatMessages.appendChild(row);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ---------- Send text message ---------- */
+sendBtn.addEventListener('click', () => {
+  const msg = messageInput.value.trim();
+  if (!msg) return;
+  // emit to server; server should re-broadcast to room with 'message' event
+  socket.emit('send_collab_message', { username, message: msg });
+  // clear input; rely on server to deliver the message (prevents duplicates)
+  messageInput.value = '';
+});
+
+messageInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendBtn.click();
+  }
+});
+
+/* ---------- File upload flow ---------- */
+fileBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', async (ev) => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  // build form
+  const form = new FormData();
+  form.append('file', file);
+
+  // show a small uploading indicator in the chat (optional)
+  const uploadingRow = document.createElement('div');
+  uploadingRow.className = 'chat-msg me';
+  uploadingRow.innerHTML = `<div class="msg-bubble"><div class="from"><strong>${escapeHtml(username)}</strong></div><div class="txt">Uploading ${escapeHtml(file.name)}...</div></div>`;
+  chatMessages.appendChild(uploadingRow);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: form });
+    const json = await res.json();
+    // remove uploading indicator (last child)
+    if (uploadingRow && uploadingRow.parentNode) uploadingRow.parentNode.removeChild(uploadingRow);
+
+    // choose file URL key (support different response shapes)
+    const fileUrl = json.file_url || json.url || json.file || json.fileUrl || json.result;
+    if (!fileUrl) {
+      alert('Upload failed: no file URL returned.');
+      fileInput.value = '';
+      return;
+    }
+
+    // emit to server; server will broadcast to room; server should send {username, file: fileUrl, filename: file.name}
+    socket.emit('send_collab_message', { username, file: fileUrl, filename: file.name });
+
+    // clear file input
+    fileInput.value = '';
+  } catch (err) {
+    console.error('Upload error', err);
+    if (uploadingRow && uploadingRow.parentNode) uploadingRow.parentNode.removeChild(uploadingRow);
+    alert('Upload failed. See console.');
+    fileInput.value = '';
+  }
+});
+
+/* ---------- Incoming socket messages ---------- */
+/* Server should emit 'message' events with object { username, message?, file?, filename? } */
+socket.on('message', (data) => {
+  // Basic validation
+  if (!data) return;
+  // Render message correctly (images/links/text)
+  renderMessage(data);
+  if (!chatBox.classList.contains('open')) notif.style.display = 'block';
+});
+
+/* ---------- Chat room join/leave UI ---------- */
+chatToggle.onclick = () => {
+  chatBox.classList.toggle('open');
+  notif.style.display = 'none';
+  if (chatBox.classList.contains('open')) {
+    socket.emit('join_collab', { username });
+  } else {
+    chatMessages.innerHTML = ''; // auto-clear when closing chat
+    socket.emit('leave_collab', { username });
+  }
+};
+closeChat.onclick = () => {
+  chatBox.classList.remove('open');
+  chatMessages.innerHTML = '';
+  socket.emit('leave_collab', { username });
+};
+minimizeChat.onclick = () => chatBox.classList.toggle('minimized');
+
+</script>
+
+<style>
+/* chat + emoji + motivation styles (kept & extended) */
+
+#chat-widget{position:fixed;bottom:30px;right:30px;z-index:9999;font-family:Inter,sans-serif;}
+#chat-toggle{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#007bff,#6610f2);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;box-shadow:0 8px 30px rgba(0,0,0,0.2);}
+#chat-box{width:380px;background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(16,24,40,0.2);position:absolute;bottom:80px;right:0;display:none;flex-direction:column;overflow:hidden;}
+#chat-box.open{display:flex;animation:fadeIn .26s ease-in-out;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);}}
+#chat-header{background:linear-gradient(90deg,#2575fc,#6a11cb);color:#fff;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;}
+.chat-title{font-weight:700;font-size:15px;}
+#chat-body{background:#f7f8fc;padding:10px;}
+#chat-messages{height:260px;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:6px;}
+.chat-msg{display:flex;}
+.chat-msg.me{justify-content:flex-end;}
+.chat-msg.them{justify-content:flex-start;}
+.msg-bubble{background:#f0f2ff;padding:10px 12px;border-radius:12px;max-width:78%;box-shadow:0 4px 12px rgba(12,16,20,0.03);}
+.chat-msg.me .msg-bubble{background:#007bff;color:#fff;border-bottom-right-radius:4px;}
+.msg-bubble .from{font-weight:600;font-size:12px;margin-bottom:6px;opacity:0.9;}
+.msg-bubble .txt-text{white-space:pre-wrap;word-break:break-word;line-height:1.2;font-size:14px;}
+.msg-img{max-width:220px;border-radius:8px;display:block;margin:6px 0;}
+.file-link{color:#0d6efd;text-decoration:none;font-weight:600;}
+.file-caption{color:rgba(255,255,255,0.9);}
+
+/* composer */
+#chat-compose{display:flex;align-items:center;padding:8px;border-top:1px solid #eee;background:#fff;}
+#chat-compose input[type="text"]{flex:1;padding:10px 12px;border-radius:999px;border:1px solid #eee;outline:none;}
+#chat-compose .icon,#chat-compose .send{background:none;border:none;font-size:18px;cursor:pointer;}
+#chat-compose .send{color:#007bff;}
+#chat-compose .icon{font-size:20px;padding:6px;}
+
+/* emoji panel */
+.emoji-panel{display:none;position:absolute;right:15px;bottom:60px;width:280px;background:#121212;color:#fff;border-radius:12px;padding:10px;box-shadow:0 20px 40px rgba(0,0,0,0.4);animation:slideUp .18s ease;}
+@keyframes slideUp{from{transform:translateY(8px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+.emoji-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.emoji-cell{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;border-radius:6px;}
+.emoji-cell:hover{background:rgba(255,255,255,0.06);transform:translateY(-2px);transition:transform .12s;}
+
+/* Motivation banner (glass style) */
+.motivation-banner {
+  max-width: 650px;
+  margin: 18px auto;
+  padding: 24px 28px;
+  border-radius: 18px;
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px);
+  background-size: cover;
+  background-position: center;
+  text-shadow: 0 3px 8px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.18);
+  transition: background-image 1s ease-in-out;
+  animation: fadeInBanner .4s ease;
+}
+.quote-text { font-size:1.05rem; font-weight:500; text-align:center; padding:6px 10px; background: rgba(0,0,0,0.35); border-radius:10px; }
+@keyframes fadeInBanner { from {opacity:0.8;} to {opacity:1;} }
+
+/* small responsive */
+@media (max-width:480px) {
+  #chat-box { right: 10px; left: 10px; width: calc(100% - 20px); bottom: 90px; }
+  .motivation-banner { width: calc(100% - 40px); margin: 12px; }
+}
+</style>
+
+{% endblock %}
